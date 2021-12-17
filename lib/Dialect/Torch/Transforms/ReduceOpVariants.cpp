@@ -11,6 +11,7 @@
 
 #include "mlir/Transforms/DialectConversion.h"
 #include "torch-mlir/Dialect/Torch/IR/TorchOps.h"
+#include "torch-mlir/Dialect/Torch/IR/TorchTypes.h"
 #include "torch-mlir/Dialect/Torch/Transforms/Passes.h"
 #include "llvm/ADT/StringExtras.h"
 
@@ -39,7 +40,8 @@ public:
         opOperand.set(rewriter.create<CopyToValueTensorOp>(op->getLoc(),
                                                            opOperand.get()));
       } else if (auto listType = operandType.dyn_cast<ListType>()) {
-        if (!listType.getContainedType().isa<NonValueTensorType>())
+        if (!(listType.getContainedType().isa<NonValueTensorType>() ||
+              listType.getContainedType().isa<OptionalType>()))
           continue;
 
         // Construct a new list whose elements are value tensors copied from
@@ -59,6 +61,10 @@ public:
             listConstruct.elements(), [&](Value tensor) -> Value {
               return rewriter.create<CopyToValueTensorOp>(op->getLoc(), tensor);
             }));
+        // Checking if the OptionalType is a NonValueTensorType optional type.
+        if (listType.getContainedType().isa<OptionalType>() &&
+            newListElements.front().getType().isa<NonValueTensorType>())
+          continue;
         opOperand.set(rewriter.create<PrimListConstructOp>(
             op->getLoc(),
             Torch::ListType::get(newListElements.front().getType()),
